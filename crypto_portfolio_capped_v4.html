@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Capped Market-Cap Crypto Portfolio</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --card: #0f1720;
+      --surface: #0b1220;
+      --border: #1f2a36;
+      --muted: #9fb0c3;
+      --text: #e6edf3;
+      --accent: #2dd4bf;
+      --accent-600: #14b8a6;
+      --warn: #fbbf24;
+      --danger: #f87171;
+      --shadow-lg: 0 10px 30px rgba(0,0,0,0.35);
+      --shadow-sm: 0 6px 18px rgba(0,0,0,0.25);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: rgba(11,15,20,0.8);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { margin: 0; font-size: 18px; letter-spacing: 0.2px; }
+    .wrap {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+      padding: 32px 16px; /* increased external top/bottom padding */
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .card h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    input[type="number"], input[type="text"], textarea, select {
+      width: 100%;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+    input::placeholder { color: #7a8aa0; }
+    input[type="number"]:focus, input[type="text"]:focus, textarea:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(45,212,191,0.15);
+      background: #0c1624;
+    }
+    input[type="checkbox"] { transform: scale(1.1); margin-right:8px; accent-color: var(--accent); }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .btn {
+      background: var(--accent);
+      color: #06221f;
+      font-weight: 700;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: transform .05s ease, filter .15s ease, box-shadow .15s ease;
+      box-shadow: 0 6px 14px rgba(20,184,166,0.18);
+    }
+    .btn:hover { filter: brightness(1.05); }
+    .btn:active { transform: translateY(1px); }
+    .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(45,212,191,0.25), 0 6px 14px rgba(20,184,166,0.18); }
+    .btn:disabled { opacity:0.5; cursor:not-allowed; box-shadow: none; }
+    .btn.btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+    .btn.btn-sm { padding: 6px 10px; font-weight: 600; font-size: 11px; border-radius: 8px; }
+    .btn.btn-secondary:hover { border-color: var(--accent); }
+    .muted { color:var(--muted); font-size:12px; }
+    code { background: rgba(255,255,255,0.04); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
+    table { width:100%; border-collapse: separate; border-spacing: 0; margin-top:8px; font-size:12px; }
+    thead th { position: sticky; top: 0; background: var(--card); z-index: 1; text-transform: uppercase; font-size: 11px; color: var(--muted); letter-spacing: .02em; }
+    th, td { padding:10px 8px; border-bottom:1px solid var(--border); text-align:right; }
+    tbody tr:nth-child(odd) { background: rgba(255,255,255,0.02); }
+    tbody tr:hover { background: rgba(45,212,191,0.03); }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { text-align:left; }
+    a.coin-link { color: var(--accent); text-decoration: none; font-weight: 700; }
+    a.coin-link:hover { text-decoration: underline; }
+    @keyframes rowIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .row-appear { animation: rowIn 420ms cubic-bezier(.2,.7,.1,1) both; }
+    .weight-cell { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; min-width: 140px; }
+    .weight-cell > span { font-variant-numeric: tabular-nums; }
+    .spark { position: relative; height: 6px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+    .spark-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: linear-gradient(90deg, var(--accent-600), var(--accent)); border-right: 1px solid rgba(0,0,0,0.15); transition: width 600ms cubic-bezier(.2,.7,.1,1); }
+    .spark-clip { position: absolute; top: 0; bottom: 0; left: 0; width: 0%; background: rgba(251,191,36,0.85); z-index: 1; transition: width 600ms cubic-bezier(.2,.7,.1,1); }
+    .spark-cap { position: absolute; top: -2px; bottom: -2px; width: 0; border-left: 1px dashed rgba(251,191,36,0.8); pointer-events: none; }
+    .metrics { display:grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap:10px; margin-top:8px; }
+    .chip { background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:12px; box-shadow: var(--shadow-lg); }
+    .chip .muted { font-size:11px; }
+    .chip div:last-child { font-size:18px; font-weight:700; color:#d7f3ee; }
+    .warn { color:#0f1720; background: rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.35); padding:10px 12px; border-radius:10px; margin-top:10px; }
+    .actions { display:flex; gap:8px; flex-wrap: wrap; }
+    .footer { padding:16px; text-align:center; color:var(--muted); font-size:12px; border-top: 1px solid var(--border); }
+    /* normal table (no sticky first columns) */
+    /* capped row highlight */
+    .capped-row { background: linear-gradient(90deg, rgba(45,212,191,0.06), transparent) !important; }
+    /* sortable headers */
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sorted-asc::after { content: " \25B2"; opacity: 0.6; font-size: 10px; }
+    th.sorted-desc::after { content: " \25BC"; opacity: 0.6; font-size: 10px; }
+    /* cap effect strip */
+    .cap-strip { margin-top: 10px; }
+    .cap-bar { position: relative; height: 10px; border:1px solid var(--border); background: rgba(255,255,255,0.04); border-radius: 999px; overflow: hidden; }
+    .cap-redis { position:absolute; left:0; top:0; bottom:0; width:0%; background: linear-gradient(90deg, #fcd34d, var(--warn)); }
+    .cap-leftover { position:absolute; left:0; top:0; bottom:0; width:0%; background: rgba(251,191,36,0.25); }
+    .cap-label { position:absolute; top:-18px; transform: translateX(-50%); font-size: 11px; color: var(--accent); font-weight: 700; }
+    .cap-legend { display:flex; gap:10px; margin-top:6px; color: var(--muted); font-size: 12px; }
+    .cap-dot { width:10px; height:10px; border-radius:999px; display:inline-block; margin-right:6px; vertical-align: middle; }
+    /* pie chart */
+    .pie { display:grid; grid-template-columns: 220px 1fr; gap: 14px; align-items: center; margin-top: 12px; }
+    .donut { width: 200px; height: 200px; border-radius: 999px; background: conic-gradient(#2dd4bf 0 100%); position: relative; box-shadow: var(--shadow-sm); border:1px solid var(--border); }
+    .donut-highlight { position:absolute; inset:0; border-radius:999px; pointer-events:none; opacity:0; transition: opacity .15s ease; }
+    .donut-highlight.visible { opacity:1; }
+    .donut-hole { position: absolute; inset: 40px; background: var(--card); border-radius: 999px; border:1px solid var(--border); }
+    .legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px 14px; }
+    .legend-item { display:flex; align-items:center; gap:8px; font-size:12px; color: var(--muted); }
+    .legend-swatch { width:10px; height:10px; border-radius:2px; border:1px solid rgba(255,255,255,0.2); }
+    .legend-item.active { color: var(--text); font-weight: 700; }
+    .legend-item.active .legend-swatch { outline: 2px solid var(--text); outline-offset: 1px; }
+    @media (max-width: 900px) {
+      .wrap { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header><h1>Crypto Portfolio by Market Cap</h1></header>
+  <div class="wrap">
+    <aside class="card">
+      <h3 style="margin-top:0">Inputs</h3>
+      <div>
+        <label>Number of Coins to Include</label>
+        <input id="topN" type="number" min="5" max="1000" step="5" value="10">
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Max weight per coin (%)</label>
+          <input id="capPct" type="number" min="1" max="50" step="0.5" value="20">
+        </div>
+        <div>
+          <label>Portfolio value (USD)</label>
+          <input id="portfolioValue" type="text" inputmode="numeric" placeholder="$10,000" value="10000">
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label>Exclude (comma-separated symbols)</label>
+        <input id="exclusions" type="text" placeholder="TRX, SHIB">
+      </div>
+      <div style="margin-top:10px">
+        <label><input id="includeDefaultExclusions" type="checkbox" checked>Include default exclusions</label>
+     
+      </div>
+      <div style="margin-top:10px">
+        <label><input id="includeStables" type="checkbox">Include stablecoins</label>
+    
+      </div>
+      <div style="margin-top:16px" class="actions">
+        <button id="runBtn" class="btn">Build Portfolio</button>
+      </div>
+      <div style="margin-top:8px" class="actions">
+        <button id="dlCsvBtn" class="btn btn-secondary btn-sm" disabled>Download CSV</button>
+        <button id="dlJsonBtn" class="btn btn-secondary btn-sm" disabled>Download JSON</button>
+      </div>
+    </aside>
+
+    <main class="card">
+      <h3 style="margin-top:0">Results</h3>
+      <div class="metrics">
+        <div class="chip"><div class="muted">Coins used</div><div id="mCoins" style="font-weight:700">–</div></div>
+        <div class="chip"><div class="muted">Sum of weights</div><div id="mSum" style="font-weight:700">–</div></div>
+        <div class="chip"><div class="muted">Coins capped</div><div id="mCapped" style="font-weight:700">–</div></div>
+        <div class="chip"><div class="muted">Largest uncapped</div><div id="mLargest" style="font-weight:700">–</div></div>
+        <div class="chip"><div class="muted"><span class="cap-dot" style="background: var(--warn);"></span> Total redistributed</div><div id="mRedis" style="font-weight:700">–</div></div>
+      </div>
+      <div id="warnings"></div>
+      <div id="capStrip" class="cap-strip" hidden>
+        <div class="cap-bar">
+          <div class="cap-redis" id="capRedis"></div>
+          <div class="cap-leftover" id="capLeft"></div>
+          <div class="cap-label" id="capLabel" style="left:0%">0%</div>
+        </div>
+      </div>
+      <div id="tableWrap" style="margin-top:8px; overflow:auto"></div>
+      <div id="pieWrap" class="pie" style="display:none">
+        <div class="donut"><div class="donut-highlight" id="donutHighlight"></div><div class="donut-hole"></div></div>
+        <div class="legend" id="pieLegend"></div>
+      </div>
+</main>
+<div class="footer">Made with ❤️ by <a href="https://mktdao.xyz" target="_blank" rel="noopener noreferrer" class="coin-link">The Marketing DAO</a></div>
+
+
+<script>
+const COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/markets";
+const DEFAULT_STABLES = new Set(["USDT","USDC","DAI","TUSD","FDUSD","USDP","EURS","EURT","BUSD","USDD","LUSD","SUSD","FRAX","USDS", "BSC-USD", "USDE"]);
+const DEFAULT_EXCLUSIONS = ["WETH", "DOGE", "BCH", "SHIB"];
+
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+function fmtUSD(x){
+  return "$" + Number(x).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function parseUSDInputToNumber(raw){
+  if(raw==null) return 0;
+  const s = String(raw).replace(/[^0-9]/g, '');
+  const n = parseInt(s || '0', 10);
+  return isFinite(n) ? n : 0;
+}
+
+function formatUSDNoDecimals(n){
+  return "$" + Number(n).toLocaleString('en-US', {maximumFractionDigits:0});
+}
+
+function formatTargetUnits(units){
+  const u = Number(units) || 0;
+  if (u < 1) {
+    return u.toFixed(4);
+  }
+  const up = Math.ceil(u * 1000) / 1000; // round up to 3 decimals
+  return up.toFixed(3);
+}
+
+function formatTargetUSDNoDecimalsCeil(value){
+  const v = Math.ceil(Number(value) || 0);
+  return "$" + v.toLocaleString('en-US', {maximumFractionDigits:0});
+}
+
+function formatUSDCompact(value){
+  const n = Number(value) || 0;
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return "$" + (n/1e12).toFixed(2) + "T";
+  if (abs >= 1e9)  return "$" + (n/1e9).toFixed(2)  + "B";
+  if (abs >= 1e6)  return "$" + (n/1e6).toFixed(2)  + "M";
+  return fmtUSD(n);
+}
+
+
+async function fetchTopN(topN){
+  const perPage = topN > 250 ? 250 : topN;
+  const pages = Math.ceil(topN / perPage);
+  let rows = [];
+  for(let page=1; page<=pages; page++){
+    const need = Math.min(perPage, topN - rows.length);
+    const params = new URLSearchParams({
+      vs_currency:"usd",
+      order:"market_cap_desc",
+      per_page: String(perPage),
+      page: String(page),
+      price_change_percentage:"24h",
+      sparkline:"false",
+      locale:"en"
+    });
+    // simple retry for 429
+    let tries=0;
+    while(true){
+      tries++;
+      const resp = await fetch(`${COINGECKO_URL}?${params.toString()}`);
+      if(resp.status===200){
+        const data = await resp.json();
+        rows.push(...data.slice(0, need));
+        break;
+      } else if(resp.status===429 && tries<=5){
+        await sleep(500 * tries);
+        continue;
+      } else {
+        const txt = await resp.text();
+        throw new Error(`CoinGecko error ${resp.status}: ${txt.slice(0,200)}`);
+      }
+    }
+  }
+  // map to desired fields
+  let df = rows.map(r=>({
+    rank: r.market_cap_rank,
+    id: r.id,
+    symbol: (r.symbol||"").toUpperCase(),
+    name: r.name,
+    price: r.current_price,
+    market_cap: r.market_cap,
+    volume_24h: r.total_volume,
+    pct_change_24h: r.price_change_percentage_24h,
+    coingecko_url: r.id ? `https://www.coingecko.com/en/coins/${encodeURIComponent(r.id)}` : null
+  })).filter(r=>r.market_cap!=null && r.price!=null);
+
+  // dedupe symbols by highest market cap
+  const bySym = new Map();
+  for(const row of df){
+    const k = row.symbol;
+    if(!bySym.has(k) || bySym.get(k).market_cap < row.market_cap){
+      bySym.set(k, row);
+    }
+  }
+  df = Array.from(bySym.values()).sort((a,b)=>b.market_cap - a.market_cap);
+  // re-rank
+  df.forEach((r, i)=> r.rank = i+1);
+      return df;
+}
+
+function filterAssets(df, exclusions, includeStables){
+  const ex = new Set(exclusions.map(s=>s.trim().toUpperCase()).filter(Boolean));
+  let out = df.filter(r=>!ex.has(r.symbol));
+  if(!includeStables){
+    out = out.filter(r=>!DEFAULT_STABLES.has(r.symbol));
+  }
+  // Remove wrapped or staked tokens by default
+  out = out.filter(r=> !/wrapped/i.test(r.name) && !/staked/i.test(r.name) && !/wrapped/i.test(r.symbol) && !/staked/i.test(r.symbol));
+
+  out.forEach((r,i)=> r.rank = i+1);
+  return out;
+}
+
+function cappedWeights(df, capPct){
+  if(!df.length) return [];
+  const cap = capPct/100;
+  const mcaps = df.map(r=>Number(r.market_cap));
+  const sum = mcaps.reduce((a,b)=>a+b,0);
+  const base = mcaps.map(v=>v/sum);
+
+  // start with min(base, cap)
+  let w = base.map(x=>Math.min(x, cap));
+
+  // iterative redistribution
+  for(let iter=0; iter<1000; iter++){
+    const total = w.reduce((a,b)=>a+b,0);
+    let leftover = 1 - total;
+    if(leftover <= 1e-12) break;
+    const eligibleIdx = w.map((v,i)=> v < cap - 1e-12 ? i : -1).filter(i=>i>=0);
+    if(eligibleIdx.length===0) break;
+    const baseEligSum = eligibleIdx.reduce((acc,i)=> acc + base[i], 0);
+    if(baseEligSum <= 0) break;
+    let progressed = false;
+    for(const i of eligibleIdx){
+      const add = leftover * (base[i] / baseEligSum);
+      const before = w[i];
+      w[i] = Math.min(w[i] + add, cap);
+      if(Math.abs(w[i]-before) > 1e-12) progressed = true;
+    }
+    if(!progressed) break;
+  }
+  return w;
+}
+
+function toCSV(rows){
+  if(!rows.length) return "";
+  const headers = Object.keys(rows[0]);
+  const escape = v => {
+    if(v==null) return "";
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+  };
+  const lines = [headers.join(",")];
+  for(const r of rows){
+    lines.push(headers.map(h=>escape(r[h])).join(","));
+  }
+  return lines.join("\n");
+}
+
+function download(filename, mime, dataStr){
+  const blob = new Blob([dataStr], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function renderTable(targets, capPct, sortState, mode, clippedPctMap){
+  const table = document.createElement("table");
+  const headers = ["rank","symbol","name","price","market_cap","weight_pct","target_value_usd","target_units"];
+  const thead = document.createElement("thead");
+  const trh = document.createElement("tr");
+  headers.forEach((h, i)=>{
+    const th = document.createElement("th");
+    th.textContent = h.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    th.classList.add('sortable');
+    // no sticky columns
+    if(sortState && sortState.key===h){ th.classList.add(sortState.dir==='asc'?'sorted-asc':'sorted-desc'); }
+    th.addEventListener('click', ()=>{
+      const dir = (sortState && sortState.key===h && sortState.dir==='asc') ? 'desc' : 'asc';
+      window.__setSort({ key: h, dir });
+    });
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  const fills = [];
+  targets.forEach((r, idx)=>{
+    const tr = document.createElement("tr");
+    tr.classList.add("row-appear");
+    tr.style.animationDelay = `${Math.min(idx*18, 360)}ms`;
+    for(const h of headers){
+      const td = document.createElement("td");
+      // no sticky columns
+      if(h === "weight_pct"){
+        const pct = Number(r[h]) || 0;
+        const wrap = document.createElement("div");
+        wrap.className = "weight-cell";
+        const label = document.createElement("span");
+        label.textContent = pct.toFixed(1) + "%";
+        const spark = document.createElement("div");
+        spark.className = "spark";
+        const fill = document.createElement("div");
+        fill.className = "spark-fill";
+        fill.style.width = "0%";
+        const clip = document.createElement("div");
+        clip.className = "spark-clip";
+        clip.style.width = "0%";
+        const cap = document.createElement("div");
+        cap.className = "spark-cap";
+        cap.style.left = (Number(capPct) || 0) + "%";
+        spark.appendChild(fill);
+        spark.appendChild(clip);
+        spark.appendChild(cap);
+        wrap.appendChild(label);
+        wrap.appendChild(spark);
+        td.appendChild(wrap);
+        const clipped = clippedPctMap ? Number(clippedPctMap.get(r.symbol) || 0) : Math.max(0, pct - (Number(capPct) || 0));
+        fills.push({el: fill, capEl: clip, pct, clipped});
+        if(mode === 'capped' && pct >= Number(capPct) - 1e-9) tr.classList.add('capped-row');
+      } else if(h === "name"){
+        if(r.coingecko_url){
+          const a = document.createElement('a');
+          a.href = r.coingecko_url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = String(r[h]);
+          a.className = 'coin-link';
+          td.appendChild(a);
+        } else {
+          td.textContent = r[h];
+        }
+      } else {
+        let v = r[h];
+        if(h==="price") v = fmtUSD(v);
+        if(h==="market_cap") v = formatUSDCompact(v);
+        if(h==="target_value_usd") v = formatTargetUSDNoDecimalsCeil(v);
+        if(h==="target_units") v = formatTargetUnits(v);
+        if(h === "symbol" && r.coingecko_url){
+          const a = document.createElement('a');
+          a.href = r.coingecko_url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = String(v);
+          a.className = 'coin-link';
+          td.appendChild(a);
+        } else {
+          td.textContent = v;
+        }
+      }
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  // animate fills after mount
+  requestAnimationFrame(()=>{
+    fills.forEach((f, i)=>{
+      const pct = Math.max(0, Math.min(100, f.pct));
+      const capPctNum = Number(capPct) || 0;
+      const clipWidth = Math.max(0, Math.min(100 - capPctNum, f.clipped));
+      setTimeout(()=>{
+        f.el.style.width = `${pct}%`;
+        if (clipWidth > 0) f.capEl.style.width = `${clipWidth}%`;
+        f.capEl.style.left = `${capPctNum}%`;
+      }, Math.min(i*12, 240));
+    });
+  });
+  return table;
+}
+
+function renderPie(targets){
+  const pieWrap = document.getElementById('pieWrap');
+  const donut = pieWrap.querySelector('.donut');
+  const legend = document.getElementById('pieLegend');
+  if(!targets || !targets.length){ pieWrap.style.display='none'; return; }
+  // build conic-gradient from weights
+  const palette = [
+    '#2dd4bf','#60a5fa','#a78bfa','#f472b6','#f59e0b','#34d399','#f87171','#f97316','#22c55e','#06b6d4',
+    '#eab308','#8b5cf6','#c084fc','#fb7185','#10b981','#3b82f6','#ef4444','#14b8a6','#84cc16','#6366f1'
+  ];
+  const segs = [];
+  let acc = 0;
+  const top = Math.min(24, targets.length);
+  for(let i=0;i<top;i++){
+    const t = targets[i];
+    const pct = Number(t.weight_pct) || 0;
+    const start = acc;
+    const end = acc + pct;
+    const color = palette[i % palette.length];
+    segs.push(`${color} ${start}% ${end}%`);
+    acc = end;
+  }
+  // any remainder (floating error)
+  if(acc < 100) segs.push(`#1f2a36 ${acc}% 100%`);
+  donut.style.background = `conic-gradient(${segs.join(',')})`;
+  // legend
+  legend.innerHTML = '';
+  for(let i=0;i<top;i++){
+    const t = targets[i];
+    const color = palette[i % palette.length];
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    const sw = document.createElement('span'); sw.className = 'legend-swatch'; sw.style.background = color;
+    const txt = document.createElement('span'); txt.textContent = `${t.symbol} • ${t.weight_pct.toFixed(2)}%`;
+    item.appendChild(sw); item.appendChild(txt);
+    legend.appendChild(item);
+  }
+  pieWrap.style.display = '';
+
+  // Hover highlight: map donut angles to legend items
+  const segments = [];
+  acc = 0;
+  for(let i=0;i<top;i++){
+    const pct = Number(targets[i].weight_pct) || 0;
+    segments.push({ start: acc/100, end: (acc + pct)/100 });
+    acc += pct;
+  }
+  const items = Array.from(legend.children);
+  const highlight = document.getElementById('donutHighlight');
+  function setActive(index){
+    items.forEach((el, i)=> el.classList.toggle('active', i===index));
+    if (index == null || index < 0) {
+      highlight.classList.remove('visible');
+      highlight.style.background = 'transparent';
+      return;
+    }
+    const color = palette[index % palette.length];
+    const s = segments[index];
+    const startDeg = s.start * 360;
+    const endDeg = s.end * 360;
+    const slice = `conic-gradient(from 0deg, transparent 0 ${startDeg}deg, rgba(255,255,255,0.15) ${startDeg}deg ${endDeg}deg, transparent ${endDeg}deg 360deg)`;
+    // overlay with a faint white to create subtle highlight
+    highlight.style.background = slice;
+    highlight.classList.add('visible');
+  }
+  donut.onmousemove = (e)=>{
+    const rect = donut.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    const x = e.clientX - cx;
+    const y = e.clientY - cy;
+    // ring bounds
+    const R = rect.width/2;
+    const holeEl = pieWrap.querySelector('.donut-hole');
+    const holeRect = holeEl.getBoundingClientRect();
+    const r0 = holeRect.width/2; // inner radius
+    const r = Math.hypot(x, y);
+    if (r < r0 || r > R) { setActive(-1); return; }
+    // angle from top, clockwise, matching conic-gradient
+    let ang = Math.atan2(x, -y); // -PI..PI, 0 at top, CW positive
+    let deg = ang * 180 / Math.PI;
+    if (deg < 0) deg += 360; // 0..360
+    const pct = deg / 360; // 0..1
+    let idx = -1;
+    for(let i=0;i<segments.length;i++){
+      const s = segments[i];
+      if (pct >= s.start && pct < s.end) { idx = i; break; }
+    }
+    setActive(idx);
+  };
+  donut.onmouseleave = ()=> setActive(-1);
+}
+
+// holdings CSV/deltas feature removed
+
+const exclusionsEl = document.getElementById("exclusions");
+const includeDefaultExclusionsEl = document.getElementById("includeDefaultExclusions");
+
+function updateExclusionsDisplay() {
+    const currentExclusions = new Set((exclusionsEl.value || "").split(",").map(s=>s.trim().toUpperCase()).filter(Boolean));
+    if (includeDefaultExclusionsEl.checked) {
+        DEFAULT_EXCLUSIONS.forEach(ex => currentExclusions.add(ex));
+    } else {
+        DEFAULT_EXCLUSIONS.forEach(ex => currentExclusions.delete(ex));
+    }
+    exclusionsEl.value = Array.from(currentExclusions).join(", ");
+}
+
+includeDefaultExclusionsEl.addEventListener("change", updateExclusionsDisplay);
+updateExclusionsDisplay();
+
+// Format portfolio input as USD with thousand separators, no decimals
+const portfolioEl = document.getElementById('portfolioValue');
+function syncPortfolioDisplay(){
+  const num = parseUSDInputToNumber(portfolioEl.value);
+  portfolioEl.value = formatUSDNoDecimals(num);
+}
+portfolioEl.addEventListener('focus', ()=>{
+  // strip formatting for editing
+  const num = parseUSDInputToNumber(portfolioEl.value);
+  portfolioEl.value = String(num);
+  // select all for quick overwrite
+  setTimeout(()=>{ try{ portfolioEl.select(); }catch(_){} }, 0);
+});
+portfolioEl.addEventListener('blur', syncPortfolioDisplay);
+portfolioEl.addEventListener('input', ()=>{
+  // keep only digits while typing
+  const cursorEnd = portfolioEl.selectionEnd;
+  const digits = portfolioEl.value.replace(/[^0-9]/g,'');
+  portfolioEl.value = digits;
+  try { portfolioEl.setSelectionRange(cursorEnd, cursorEnd); } catch(_){}
+});
+// initialize display
+syncPortfolioDisplay();
+
+
+document.getElementById("runBtn").addEventListener("click", async ()=>{
+  const topN = parseInt(document.getElementById("topN").value || "100", 10);
+  const capPct = parseFloat(document.getElementById("capPct").value || "10");
+  const portVal = parseUSDInputToNumber(document.getElementById("portfolioValue").value || "10000");
+  const exclusions = (document.getElementById("exclusions").value || "").split(",").map(s=>s.trim()).filter(Boolean);
+
+  const includeStables = document.getElementById("includeStables").checked;
+
+  // removed loading pill
+  const runBtn = document.getElementById("runBtn");
+  const prevLabel = runBtn.textContent;
+  runBtn.disabled = true;
+  runBtn.textContent = "Building…";
+  try {
+    
+const raw = await fetchTopN(topN * 3); // fetch extra to ensure enough after exclusions
+let filtered = filterAssets(raw, exclusions, includeStables);
+// ensure final output length is topN
+if(filtered.length > topN){
+  filtered = filtered.slice(0, topN);
+}
+
+    if(filtered.length===0){
+      alert("No assets remain after filtering. Loosen exclusions or include stables.");
+      return;
+    }
+    const weights = cappedWeights(filtered, capPct);
+    const sumW = weights.reduce((a,b)=>a+b,0);
+    // compute clipped percentages per coin for rendering yellow bar precisely
+    const baseSum = filtered.reduce((acc, r)=> acc + r.market_cap, 0);
+    const baseWeights = filtered.map(r=> r.market_cap / baseSum);
+    const clippedPctMap = new Map();
+    for (let i=0;i<filtered.length;i++){
+      const basePct = (baseWeights[i] || 0) * 100;
+      const finalPct = (weights[i] || 0) * 100;
+      const clipped = Math.max(0, basePct - finalPct);
+      if (clipped > 0) clippedPctMap.set(filtered[i].symbol, clipped);
+    }
+
+    // targets
+    const targets = filtered.map((r, idx)=>{
+      const w = weights[idx] || 0;
+      const targetVal = w * portVal;
+      const targetUnits = r.price>0 ? targetVal / r.price : 0;
+      return {
+        rank: r.rank,
+        symbol: r.symbol,
+        name: r.name,
+        price: r.price,
+        market_cap: r.market_cap,
+        weight_pct: w*100,
+        target_value_usd: targetVal,
+        target_units: targetUnits,
+        coingecko_url: r.coingecko_url || (r.id ? `https://www.coingecko.com/en/coins/${encodeURIComponent(r.id)}` : null)
+      };
+    });
+
+    // metrics
+    document.getElementById("mCoins").textContent = String(filtered.length);
+    document.getElementById("mSum").textContent = (sumW*100).toFixed(2) + "%";
+    const cappedCount = weights.filter(w=> w >= capPct/100 - 1e-12).length;
+    document.getElementById("mCapped").textContent = String(cappedCount);
+    const largestUncapped = Math.max(0, ...weights.filter(w=> w < capPct/100 - 1e-12)) * 100;
+    document.getElementById("mLargest").textContent = largestUncapped ? largestUncapped.toFixed(2)+"%" : "0.00%";
+    //
+
+    // cap effect strip
+    // base distribution used above for clipped computation
+    const baseClipped = baseWeights.map(w=> Math.min(w, capPct/100));
+    const clippedSum = baseClipped.reduce((a,b)=>a+b, 0);
+    const unallocated = Math.max(0, 1 - clippedSum);
+    const redistributed = Math.max(0, unallocated); // by construction in redistribution
+    const strip = document.getElementById('capStrip');
+    const capRedis = document.getElementById('capRedis');
+    const capLeft = document.getElementById('capLeft');
+    const capLabel = document.getElementById('capLabel');
+    strip.hidden = false;
+    capLeft.style.width = (unallocated*100).toFixed(2) + '%';
+    capRedis.style.width = (redistributed*100).toFixed(2) + '%';
+    capLabel.textContent = (redistributed*100).toFixed(2) + '%';
+    capLabel.style.left = (redistributed*100).toFixed(2) + '%';
+    const mRedis = document.getElementById('mRedis');
+    if (mRedis) mRedis.textContent = (redistributed*100).toFixed(2) + '%';
+
+    // warnings
+    const warnBox = document.getElementById("warnings");
+    warnBox.innerHTML = "";
+    if(sumW < 0.999){
+      const p = document.createElement("div");
+      p.className = "warn";
+      p.textContent = `Cap may be too tight: total allocated ${(sumW*100).toFixed(2)}%. Increase cap or Top N.`;
+      warnBox.appendChild(p);
+    }
+    if(filtered.length < 10 && capPct <= 10){
+      const p = document.createElement("div");
+      p.className = "warn";
+      p.textContent = "Very few assets with a tight cap limit distribution.";
+      warnBox.appendChild(p);
+    }
+
+    // sort and table
+    const wrap = document.getElementById("tableWrap");
+    wrap.innerHTML = "";
+    // default sort by rank asc
+    let sortState = { key: 'rank', dir: 'asc' };
+    function sortTargets(list, state){
+      const dir = state.dir === 'asc' ? 1 : -1;
+      return [...list].sort((a,b)=>{
+        const ka = a[state.key]; const kb = b[state.key];
+        if(typeof ka === 'number' && typeof kb === 'number') return (ka - kb) * dir;
+        return String(ka).localeCompare(String(kb)) * dir;
+      });
+    }
+    function renderSorted(){
+      wrap.innerHTML = '';
+      const sorted = sortTargets(targets, sortState);
+      wrap.appendChild(renderTable(sorted, capPct, sortState, 'capped', clippedPctMap));
+      renderPie(sorted);
+    }
+    window.__setSort = (s)=>{ sortState = s; renderSorted(); };
+    renderSorted();
+
+    // downloads
+    const dlCsvBtn = document.getElementById("dlCsvBtn");
+    const dlJsonBtn = document.getElementById("dlJsonBtn");
+    dlCsvBtn.disabled = false;
+    dlJsonBtn.disabled = false;
+    dlCsvBtn.onclick = ()=> download("targets.csv", "text/csv", toCSV(sortTargets(targets, sortState)));
+    dlJsonBtn.onclick = ()=> download("targets.json", "application/json", JSON.stringify(sortTargets(targets, sortState), null, 2));
+
+    // deltas feature removed
+  } catch(err){
+    alert(err.message || String(err));
+  } finally {
+    runBtn.disabled = false;
+    runBtn.textContent = prevLabel;
+  }
+});
+</script>
+</body>
+</html>
