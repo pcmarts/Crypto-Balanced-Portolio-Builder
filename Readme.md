@@ -1,4 +1,6 @@
 # Crypto Portfolio by Market Cap
+## Works out of the box
+Simply download the HTML file, and open on the file your desktop computer. 
 
 ## Description
 A single-file, client-side tool for building a **market-cap–weighted crypto portfolio** with per-asset caps.  
