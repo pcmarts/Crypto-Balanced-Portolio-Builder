@@ -24,10 +24,13 @@ No accounts. No servers. No API keys. 100% in-browser.
 - **Portfolio value** (USD)  
 - Include/exclude stablecoins  
 - Custom coin exclusions  
+- **Custom target allocations** with percentage weights for specific coins
 
 ### Allocation Logic
 - Caps oversized weights and redistributes excess proportionally  
 - Shows total % redistributed  
+- **Custom targets** get exact allocations as specified (not subject to market cap weighting)
+- Remaining percentage allocated to market cap weighted coins
 
 ### Results Table
 - Sortable by: rank, symbol, name, price, market cap, weight %, target USD, target units  
@@ -45,23 +48,38 @@ No accounts. No servers. No API keys. 100% in-browser.
 
 ### Export
 - Download CSV/JSON (respects current sort)  
+- Download portfolio adjustments CSV after comparing with current holdings
 
 ### UX
 - Dark, responsive UI  
 - Keyboard-accessible  
 - Smooth row animations  
 
+### Custom Target Allocations
+- Set specific percentage allocations for chosen coins (e.g., BTC 30%, ETH 30%)
+- Custom targets receive exact allocations regardless of market cap
+- Real-time calculation of remaining percentage for market cap allocation
+- Prevents over-allocation with visual warnings and validation
+
+### Current Holdings Comparison
+- Upload CSV file with your current holdings (SYMBOL and AMOUNT columns)
+- Compare current portfolio with target allocations
+- See precise buy/sell/hold recommendations
+- Calculate exact adjustment amounts and values
+- Export detailed adjustment plan as CSV
+
 ### Privacy
 - 100% client-side  
-- Only calls CoinGecko’s public API  
+- Only calls CoinGecko's public API  
 
 ---
 
 ## Quick Start
 1. Download this repo **or** just grab `crypto_portfolio_capped_v4.html`.  
 2. Open it in any modern browser.  
-3. Adjust inputs and click **Build Portfolio**.  
-4. (Optional) Download allocations as CSV/JSON.  
+3. Adjust inputs, set custom targets (optional), and click **Build Portfolio**.  
+4. (Optional) Upload current holdings CSV to compare and get adjustment recommendations.
+5. (Optional) Download allocations and adjustments as CSV/JSON.  
 
 ---
 
