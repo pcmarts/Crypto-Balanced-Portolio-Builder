@@ -138,6 +138,14 @@
     .cap-label { position:absolute; top:-18px; transform: translateX(-50%); font-size: 11px; color: var(--accent); font-weight: 700; }
     .cap-legend { display:flex; gap:10px; margin-top:6px; color: var(--muted); font-size: 12px; }
     .cap-dot { width:10px; height:10px; border-radius:999px; display:inline-block; margin-right:6px; vertical-align: middle; }
+    /* delta comparison styles */
+    .delta-buy { background: rgba(45,212,191,0.08) !important; }
+    .delta-sell { background: rgba(248,113,113,0.08) !important; }
+    .delta-hold { background: rgba(251,191,36,0.08) !important; }
+    .action-buy { color: var(--accent); font-weight: 700; }
+    .action-sell { color: var(--danger); font-weight: 700; }
+    .action-hold { color: var(--warn); font-weight: 700; }
+    
     /* pie chart */
     .pie { display:grid; grid-template-columns: 220px 1fr; gap: 14px; align-items: center; margin-top: 12px; }
     .donut { width: 200px; height: 200px; border-radius: 999px; background: conic-gradient(#2dd4bf 0 100%); position: relative; box-shadow: var(--shadow-sm); border:1px solid var(--border); }
@@ -187,12 +195,37 @@
         <label><input id="includeStables" type="checkbox">Include stablecoins</label>
     
       </div>
+      <div style="margin-top:10px">
+        <label>Custom Target Allocations</label>
+        <div id="customTargets" style="margin-top:6px">
+          <!-- Custom target inputs will be added here dynamically -->
+        </div>
+        <button id="addTargetBtn" class="btn btn-secondary btn-sm" style="margin-top:6px">Add Target</button>
+        <div id="remainingPct" class="muted" style="margin-top:6px; font-size:11px;">
+          Remaining for market cap allocation: <span id="remainingValue">100%</span>
+        </div>
+      </div>
       <div style="margin-top:16px" class="actions">
         <button id="runBtn" class="btn">Build Portfolio</button>
       </div>
       <div style="margin-top:8px" class="actions">
         <button id="dlCsvBtn" class="btn btn-secondary btn-sm" disabled>Download CSV</button>
         <button id="dlJsonBtn" class="btn btn-secondary btn-sm" disabled>Download JSON</button>
+      </div>
+      
+      <div style="margin-top:16px; border-top: 1px solid var(--border); padding-top: 16px;">
+        <h3 style="margin-top:0; margin-bottom: 12px;">Current Holdings Comparison</h3>
+        <div>
+          <label>Upload your holdings CSV</label>
+          <input id="holdingsFile" type="file" accept=".csv" style="margin-top:6px;">
+          <div class="muted" style="margin-top:4px; font-size:11px;">
+            CSV should have SYMBOL and AMOUNT columns (case insensitive)
+          </div>
+        </div>
+        <div style="margin-top:10px" class="actions">
+          <button id="compareBtn" class="btn btn-secondary" disabled>Compare Holdings</button>
+          <button id="clearHoldingsBtn" class="btn btn-secondary btn-sm" disabled>Clear</button>
+        </div>
       </div>
     </aside>
 
@@ -217,6 +250,21 @@
       <div id="pieWrap" class="pie" style="display:none">
         <div class="donut"><div class="donut-highlight" id="donutHighlight"></div><div class="donut-hole"></div></div>
         <div class="legend" id="pieLegend"></div>
+      </div>
+      
+      <div id="deltaSection" style="display:none; margin-top:24px; border-top: 1px solid var(--border); padding-top: 16px;">
+        <h3 style="margin-top:0">Portfolio Adjustments Needed</h3>
+        <div class="metrics">
+          <div class="chip"><div class="muted">Current value</div><div id="mCurrentValue">–</div></div>
+          <div class="chip"><div class="muted">Target value</div><div id="mTargetValue">–</div></div>
+          <div class="chip"><div class="muted">Assets to buy</div><div id="mToBuy">–</div></div>
+          <div class="chip"><div class="muted">Assets to sell</div><div id="mToSell">–</div></div>
+          <div class="chip"><div class="muted">Net adjustment</div><div id="mNetAdj">–</div></div>
+        </div>
+        <div id="deltaTableWrap" style="margin-top:16px; overflow:auto"></div>
+        <div style="margin-top:8px" class="actions">
+          <button id="dlDeltaCsvBtn" class="btn btn-secondary btn-sm">Download Adjustments CSV</button>
+        </div>
       </div>
 </main>
 <div class="footer">Made with ❤️ by <a href="https://mktdao.xyz" target="_blank" rel="noopener noreferrer" class="coin-link">The Marketing DAO</a></div>
@@ -341,35 +389,157 @@ function filterAssets(df, exclusions, includeStables){
   return out;
 }
 
-function cappedWeights(df, capPct){
-  if(!df.length) return [];
-  const cap = capPct/100;
-  const mcaps = df.map(r=>Number(r.market_cap));
-  const sum = mcaps.reduce((a,b)=>a+b,0);
-  const base = mcaps.map(v=>v/sum);
+// Add custom target management after DEFAULT_EXCLUSIONS
+let customTargets = new Map(); // symbol -> percentage
 
-  // start with min(base, cap)
-  let w = base.map(x=>Math.min(x, cap));
-
-  // iterative redistribution
-  for(let iter=0; iter<1000; iter++){
-    const total = w.reduce((a,b)=>a+b,0);
-    let leftover = 1 - total;
-    if(leftover <= 1e-12) break;
-    const eligibleIdx = w.map((v,i)=> v < cap - 1e-12 ? i : -1).filter(i=>i>=0);
-    if(eligibleIdx.length===0) break;
-    const baseEligSum = eligibleIdx.reduce((acc,i)=> acc + base[i], 0);
-    if(baseEligSum <= 0) break;
-    let progressed = false;
-    for(const i of eligibleIdx){
-      const add = leftover * (base[i] / baseEligSum);
-      const before = w[i];
-      w[i] = Math.min(w[i] + add, cap);
-      if(Math.abs(w[i]-before) > 1e-12) progressed = true;
-    }
-    if(!progressed) break;
+function updateRemainingPercentage() {
+  const total = Array.from(customTargets.values()).reduce((sum, pct) => sum + pct, 0);
+  const remaining = Math.max(0, 100 - total);
+  document.getElementById('remainingValue').textContent = remaining.toFixed(1) + '%';
+  
+  // Disable add button if we're at or over 100%
+  document.getElementById('addTargetBtn').disabled = remaining <= 0;
+  
+  // Update warning color
+  const remainingEl = document.getElementById('remainingPct');
+  if (remaining < 0) {
+    remainingEl.style.color = 'var(--danger)';
+  } else if (remaining < 10) {
+    remainingEl.style.color = 'var(--warn)';
+  } else {
+    remainingEl.style.color = 'var(--muted)';
   }
-  return w;
+}
+
+function addCustomTarget(symbol = '', percentage = '') {
+  const container = document.getElementById('customTargets');
+  const targetDiv = document.createElement('div');
+  targetDiv.className = 'row';
+  targetDiv.style.marginBottom = '6px';
+  
+  targetDiv.innerHTML = `
+    <div>
+      <input type="text" placeholder="Symbol (e.g., BTC)" class="target-symbol" value="${symbol}" style="text-transform:uppercase">
+    </div>
+    <div style="display:flex; gap:6px; align-items:center;">
+      <input type="number" placeholder="%" min="0" max="100" step="0.1" class="target-percentage" value="${percentage}">
+      <button class="btn btn-secondary btn-sm remove-target" style="padding:6px 8px; color:var(--danger);">×</button>
+    </div>
+  `;
+  
+  const symbolInput = targetDiv.querySelector('.target-symbol');
+  const pctInput = targetDiv.querySelector('.target-percentage');
+  const removeBtn = targetDiv.querySelector('.remove-target');
+  
+  // Auto-uppercase symbol input
+  symbolInput.addEventListener('input', (e) => {
+    e.target.value = e.target.value.toUpperCase();
+    updateCustomTargets();
+  });
+  
+  pctInput.addEventListener('input', updateCustomTargets);
+  
+  removeBtn.addEventListener('click', () => {
+    const symbol = symbolInput.value.trim().toUpperCase();
+    if (symbol && customTargets.has(symbol)) {
+      customTargets.delete(symbol);
+    }
+    targetDiv.remove();
+    updateRemainingPercentage();
+  });
+  
+  container.appendChild(targetDiv);
+  return targetDiv;
+}
+
+function updateCustomTargets() {
+  customTargets.clear();
+  const targetDivs = document.querySelectorAll('#customTargets .row');
+  
+  targetDivs.forEach(div => {
+    const symbol = div.querySelector('.target-symbol').value.trim().toUpperCase();
+    const pct = parseFloat(div.querySelector('.target-percentage').value || '0');
+    
+    if (symbol && pct > 0) {
+      customTargets.set(symbol, pct);
+    }
+  });
+  
+  updateRemainingPercentage();
+}
+
+// Modified weight calculation function
+function cappedWeightsWithCustomTargets(df, capPct, customTargetMap) {
+  if (!df.length) return [];
+  
+  const cap = capPct / 100;
+  const totalCustomPct = Array.from(customTargetMap.values()).reduce((sum, pct) => sum + pct, 0);
+  const remainingForMarketCap = Math.max(0, 100 - totalCustomPct) / 100;
+  
+  // Initialize weights array
+  let weights = new Array(df.length).fill(0);
+  
+  // First, assign custom targets EXACTLY as specified (no capping)
+  for (let i = 0; i < df.length; i++) {
+    const symbol = df[i].symbol;
+    if (customTargetMap.has(symbol)) {
+      weights[i] = customTargetMap.get(symbol) / 100; // Fixed allocation
+    }
+  }
+  
+  // Find coins not in custom targets for market cap allocation
+  const nonCustomIndices = [];
+  const nonCustomMcaps = [];
+  
+  for (let i = 0; i < df.length; i++) {
+    if (weights[i] === 0) { // Not a custom target
+      nonCustomIndices.push(i);
+      nonCustomMcaps.push(Number(df[i].market_cap));
+    }
+  }
+  
+  if (nonCustomIndices.length > 0 && remainingForMarketCap > 0) {
+    // Calculate market cap weights for remaining coins (within remaining allocation only)
+    const mcapSum = nonCustomMcaps.reduce((a, b) => a + b, 0);
+    const baseMcapWeights = nonCustomMcaps.map(v => v / mcapSum);
+    
+    // Apply capping ONLY to the market cap weighted coins within their allocation space
+    let remainingWeights = baseMcapWeights.map(w => Math.min(w * remainingForMarketCap, cap));
+    
+    // Redistribution logic for market cap coins only
+    for (let iter = 0; iter < 1000; iter++) {
+      const total = remainingWeights.reduce((a, b) => a + b, 0);
+      let leftover = remainingForMarketCap - total;
+      if (leftover <= 1e-12) break;
+      
+      // Only consider non-custom coins that haven't hit the cap
+      const eligibleIdx = remainingWeights
+        .map((w, i) => w < cap - 1e-12 ? i : -1)
+        .filter(i => i >= 0);
+        
+      if (eligibleIdx.length === 0) break;
+      
+      const baseEligSum = eligibleIdx.reduce((acc, i) => acc + baseMcapWeights[i], 0);
+      if (baseEligSum <= 0) break;
+      
+      let progressed = false;
+      for (const i of eligibleIdx) {
+        const add = leftover * (baseMcapWeights[i] / baseEligSum);
+        const before = remainingWeights[i];
+        remainingWeights[i] = Math.min(remainingWeights[i] + add, cap);
+        if (Math.abs(remainingWeights[i] - before) > 1e-12) progressed = true;
+      }
+      if (!progressed) break;
+    }
+    
+    // Assign the calculated weights back to the main weights array
+    for (let i = 0; i < nonCustomIndices.length; i++) {
+      const mainIndex = nonCustomIndices[i];
+      weights[mainIndex] = remainingWeights[i];
+    }
+  }
+  
+  return weights;
 }
 
 function toCSV(rows){
@@ -399,7 +569,7 @@ function download(filename, mime, dataStr){
   URL.revokeObjectURL(url);
 }
 
-function renderTable(targets, capPct, sortState, mode, clippedPctMap){
+function renderTable(targets, capPct, sortState, mode, clippedPctMap, customTargetsMap){
   const table = document.createElement("table");
   const headers = ["rank","symbol","name","price","market_cap","weight_pct","target_value_usd","target_units"];
   const thead = document.createElement("thead");
@@ -452,7 +622,10 @@ function renderTable(targets, capPct, sortState, mode, clippedPctMap){
         td.appendChild(wrap);
         const clipped = clippedPctMap ? Number(clippedPctMap.get(r.symbol) || 0) : Math.max(0, pct - (Number(capPct) || 0));
         fills.push({el: fill, capEl: clip, pct, clipped});
-        if(mode === 'capped' && pct >= Number(capPct) - 1e-9) tr.classList.add('capped-row');
+        // Only mark market cap weighted coins as capped (exclude custom targets)
+        if(mode === 'capped' && pct >= Number(capPct) - 1e-9 && !(customTargetsMap && customTargetsMap.has(r.symbol))) {
+          tr.classList.add('capped-row');
+        }
       } else if(h === "name"){
         if(r.coingecko_url){
           const a = document.createElement('a');
@@ -597,7 +770,196 @@ function renderPie(targets){
   donut.onmouseleave = ()=> setActive(-1);
 }
 
-// holdings CSV/deltas feature removed
+// Holdings management
+let currentHoldings = new Map(); // symbol -> { amount, value }
+let currentTargets = []; // stored targets for comparison
+
+function parseCSV(csvText) {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) throw new Error('CSV must have at least a header and one data row');
+  
+  const headers = lines[0].split(',').map(h => h.trim().toUpperCase());
+  const symbolIndex = headers.findIndex(h => h.includes('SYMBOL'));
+  const amountIndex = headers.findIndex(h => h.includes('AMOUNT') || h.includes('TOTAL'));
+  
+  if (symbolIndex === -1) throw new Error('CSV must have a SYMBOL column');
+  if (amountIndex === -1) throw new Error('CSV must have an AMOUNT or TOTAL column');
+  
+  const holdings = new Map();
+  
+  for (let i = 1; i < lines.length; i++) {
+    const row = lines[i].split(',');
+    if (row.length < Math.max(symbolIndex + 1, amountIndex + 1)) continue;
+    
+    const symbol = row[symbolIndex]?.trim().toUpperCase();
+    const amount = parseFloat(row[amountIndex]?.trim() || '0');
+    
+    if (symbol && amount > 0 && symbol !== '-' && !symbol.includes('-')) {
+      // Combine holdings for same symbol
+      const existing = holdings.get(symbol) || 0;
+      holdings.set(symbol, existing + amount);
+    }
+  }
+  
+  return holdings;
+}
+
+function updateHoldingsDisplay() {
+  const fileInput = document.getElementById('holdingsFile');
+  const compareBtn = document.getElementById('compareBtn');
+  const clearBtn = document.getElementById('clearHoldingsBtn');
+  
+  if (currentHoldings.size > 0) {
+    compareBtn.disabled = currentTargets.length === 0;
+    clearBtn.disabled = false;
+  } else {
+    compareBtn.disabled = true;
+    clearBtn.disabled = true;
+  }
+}
+
+function calculateDeltas() {
+  if (!currentTargets.length || !currentHoldings.size) return [];
+  
+  const deltas = [];
+  const allSymbols = new Set([
+    ...currentTargets.map(t => t.symbol),
+    ...currentHoldings.keys()
+  ]);
+  
+  let totalCurrentValue = 0;
+  let totalTargetValue = 0;
+  
+  for (const symbol of allSymbols) {
+    const target = currentTargets.find(t => t.symbol === symbol);
+    const currentAmount = currentHoldings.get(symbol) || 0;
+    
+    if (!target && currentAmount === 0) continue;
+    
+    const price = target?.price || 0;
+    const targetAmount = target?.target_units || 0;
+    const targetValue = target?.target_value_usd || 0;
+    const currentValue = currentAmount * price;
+    
+    totalCurrentValue += currentValue;
+    totalTargetValue += targetValue;
+    
+    const deltaAmount = targetAmount - currentAmount;
+    const deltaValue = targetValue - currentValue;
+    
+    let action = 'HOLD';
+    if (Math.abs(deltaAmount) < 0.0001) {
+      action = 'HOLD';
+    } else if (deltaAmount > 0) {
+      action = 'BUY';
+    } else {
+      action = 'SELL';
+    }
+    
+    deltas.push({
+      symbol,
+      name: target?.name || symbol,
+      price,
+      current_amount: currentAmount,
+      current_value: currentValue,
+      target_amount: targetAmount,
+      target_value: targetValue,
+      delta_amount: deltaAmount,
+      delta_value: deltaValue,
+      action,
+      coingecko_url: target?.coingecko_url
+    });
+  }
+  
+  // Sort by absolute delta value descending
+  deltas.sort((a, b) => Math.abs(b.delta_value) - Math.abs(a.delta_value));
+  
+  return { deltas, totalCurrentValue, totalTargetValue };
+}
+
+function renderDeltaTable(deltaData) {
+  const { deltas, totalCurrentValue, totalTargetValue } = deltaData;
+  
+  // Update metrics
+  document.getElementById('mCurrentValue').textContent = formatUSDCompact(totalCurrentValue);
+  document.getElementById('mTargetValue').textContent = formatUSDCompact(totalTargetValue);
+  
+  const toBuy = deltas.filter(d => d.action === 'BUY').length;
+  const toSell = deltas.filter(d => d.action === 'SELL').length;
+  const netAdj = totalTargetValue - totalCurrentValue;
+  
+  document.getElementById('mToBuy').textContent = String(toBuy);
+  document.getElementById('mToSell').textContent = String(toSell);
+  document.getElementById('mNetAdj').textContent = formatUSDCompact(netAdj);
+  
+  // Build table
+  const table = document.createElement("table");
+  const headers = ["symbol", "name", "action", "current_amount", "target_amount", "delta_amount", "current_value", "target_value", "delta_value"];
+  
+  const thead = document.createElement("thead");
+  const trh = document.createElement("tr");
+  headers.forEach(h => {
+    const th = document.createElement("th");
+    th.textContent = h.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  table.appendChild(thead);
+  
+  const tbody = document.createElement("tbody");
+  deltas.forEach((delta, idx) => {
+    const tr = document.createElement("tr");
+    tr.classList.add("row-appear");
+    tr.style.animationDelay = `${Math.min(idx * 18, 360)}ms`;
+    
+    // Add action-based row styling
+    if (delta.action === 'BUY') tr.classList.add('delta-buy');
+    else if (delta.action === 'SELL') tr.classList.add('delta-sell');
+    else tr.classList.add('delta-hold');
+    
+    headers.forEach(h => {
+      const td = document.createElement("td");
+      let value = delta[h];
+      
+      if (h === "symbol" && delta.coingecko_url) {
+        const a = document.createElement('a');
+        a.href = delta.coingecko_url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = value;
+        a.className = 'coin-link';
+        td.appendChild(a);
+      } else if (h === "name" && delta.coingecko_url) {
+        const a = document.createElement('a');
+        a.href = delta.coingecko_url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = value;
+        a.className = 'coin-link';
+        td.appendChild(a);
+      } else if (h === "action") {
+        td.textContent = value;
+        td.className = `action-${value.toLowerCase()}`;
+      } else if (h.includes("amount")) {
+        td.textContent = formatTargetUnits(value);
+      } else if (h.includes("value")) {
+        td.textContent = formatTargetUSDNoDecimalsCeil(Math.abs(value));
+        if (h === "delta_value" && value < 0) {
+          td.textContent = "-" + td.textContent;
+        }
+      } else {
+        td.textContent = value;
+      }
+      
+      tr.appendChild(td);
+    });
+    
+    tbody.appendChild(tr);
+  });
+  
+  table.appendChild(tbody);
+  return table;
+}
 
 const exclusionsEl = document.getElementById("exclusions");
 const includeDefaultExclusionsEl = document.getElementById("includeDefaultExclusions");
@@ -639,6 +1001,17 @@ portfolioEl.addEventListener('input', ()=>{
 // initialize display
 syncPortfolioDisplay();
 
+// Add target button event
+document.getElementById('addTargetBtn').addEventListener('click', () => {
+  addCustomTarget();
+});
+
+// Initialize with default targets
+addCustomTarget('BTC', '30');
+addCustomTarget('ETH', '30');
+updateCustomTargets(); // This will populate the customTargets Map
+updateRemainingPercentage();
+
 
 document.getElementById("runBtn").addEventListener("click", async ()=>{
   const topN = parseInt(document.getElementById("topN").value || "100", 10);
@@ -647,6 +1020,13 @@ document.getElementById("runBtn").addEventListener("click", async ()=>{
   const exclusions = (document.getElementById("exclusions").value || "").split(",").map(s=>s.trim()).filter(Boolean);
 
   const includeStables = document.getElementById("includeStables").checked;
+
+  // Validate custom targets
+  const totalCustomPct = Array.from(customTargets.values()).reduce((sum, pct) => sum + pct, 0);
+  if (totalCustomPct > 100) {
+    alert("Total custom target allocations exceed 100%. Please reduce the percentages.");
+    return;
+  }
 
   // removed loading pill
   const runBtn = document.getElementById("runBtn");
@@ -666,17 +1046,26 @@ if(filtered.length > topN){
       alert("No assets remain after filtering. Loosen exclusions or include stables.");
       return;
     }
-    const weights = cappedWeights(filtered, capPct);
-    const sumW = weights.reduce((a,b)=>a+b,0);
+    const weights = cappedWeightsWithCustomTargets(filtered, capPct, customTargets);
+    
     // compute clipped percentages per coin for rendering yellow bar precisely
-    const baseSum = filtered.reduce((acc, r)=> acc + r.market_cap, 0);
-    const baseWeights = filtered.map(r=> r.market_cap / baseSum);
+    // Only calculate clipping for market cap weighted coins (exclude custom targets)
+    const nonCustomCoins = filtered.filter(r => !customTargets.has(r.symbol));
+    const baseSum = nonCustomCoins.reduce((acc, r)=> acc + r.market_cap, 0);
     const clippedPctMap = new Map();
+    
     for (let i=0;i<filtered.length;i++){
-      const basePct = (baseWeights[i] || 0) * 100;
+      const symbol = filtered[i].symbol;
+      if (customTargets.has(symbol)) {
+        // Custom targets don't get clipped visualization
+        continue;
+      }
+      
+      const mcap = filtered[i].market_cap;
+      const basePct = baseSum > 0 ? (mcap / baseSum) * (100 - Array.from(customTargets.values()).reduce((a,b)=>a+b,0)) : 0;
       const finalPct = (weights[i] || 0) * 100;
       const clipped = Math.max(0, basePct - finalPct);
-      if (clipped > 0) clippedPctMap.set(filtered[i].symbol, clipped);
+      if (clipped > 0) clippedPctMap.set(symbol, clipped);
     }
 
     // targets
@@ -699,19 +1088,48 @@ if(filtered.length > topN){
 
     // metrics
     document.getElementById("mCoins").textContent = String(filtered.length);
-    document.getElementById("mSum").textContent = (sumW*100).toFixed(2) + "%";
-    const cappedCount = weights.filter(w=> w >= capPct/100 - 1e-12).length;
+    document.getElementById("mSum").textContent = (weights.reduce((a,b)=>a+b,0)*100).toFixed(2) + "%";
+    
+    // Count only market cap weighted coins that hit the cap (exclude custom targets)
+    let cappedCount = 0;
+    let marketCapWeights = [];
+    for (let i = 0; i < filtered.length; i++) {
+      const symbol = filtered[i].symbol;
+      const weight = weights[i];
+      if (!customTargets.has(symbol)) {
+        marketCapWeights.push(weight);
+        if (weight >= capPct/100 - 1e-12) {
+          cappedCount++;
+        }
+      }
+    }
+    
     document.getElementById("mCapped").textContent = String(cappedCount);
-    const largestUncapped = Math.max(0, ...weights.filter(w=> w < capPct/100 - 1e-12)) * 100;
+    const largestUncapped = marketCapWeights.length > 0 ? 
+      Math.max(0, ...marketCapWeights.filter(w=> w < capPct/100 - 1e-12)) * 100 : 0;
     document.getElementById("mLargest").textContent = largestUncapped ? largestUncapped.toFixed(2)+"%" : "0.00%";
     //
 
     // cap effect strip
-    // base distribution used above for clipped computation
-    const baseClipped = baseWeights.map(w=> Math.min(w, capPct/100));
+    // Calculate redistribution effect for market cap weighted coins only
+    const totalCustomPct = Array.from(customTargets.values()).reduce((sum, pct) => sum + pct, 0);
+    const remainingForMarketCap = Math.max(0, 100 - totalCustomPct) / 100;
+    
+    // Base distribution for non-custom coins
+    const nonCustomMcaps = [];
+    for (let i = 0; i < filtered.length; i++) {
+      if (!customTargets.has(filtered[i].symbol)) {
+        nonCustomMcaps.push(filtered[i].market_cap);
+      }
+    }
+    const mcapSum = nonCustomMcaps.reduce((a, b) => a + b, 0);
+    const baseMarketCapWeights = nonCustomMcaps.map(v => mcapSum > 0 ? v / mcapSum : 0);
+    
+    // Calculate how much would be clipped without redistribution
+    const baseClipped = baseMarketCapWeights.map(w => Math.min(w, capPct/100));
     const clippedSum = baseClipped.reduce((a,b)=>a+b, 0);
-    const unallocated = Math.max(0, 1 - clippedSum);
-    const redistributed = Math.max(0, unallocated); // by construction in redistribution
+    const unallocated = Math.max(0, remainingForMarketCap - clippedSum);
+    const redistributed = Math.max(0, unallocated);
     const strip = document.getElementById('capStrip');
     const capRedis = document.getElementById('capRedis');
     const capLeft = document.getElementById('capLeft');
@@ -727,10 +1145,10 @@ if(filtered.length > topN){
     // warnings
     const warnBox = document.getElementById("warnings");
     warnBox.innerHTML = "";
-    if(sumW < 0.999){
+    if(weights.reduce((a,b)=>a+b,0) < 0.999){
       const p = document.createElement("div");
       p.className = "warn";
-      p.textContent = `Cap may be too tight: total allocated ${(sumW*100).toFixed(2)}%. Increase cap or Top N.`;
+      p.textContent = `Cap may be too tight: total allocated ${(weights.reduce((a,b)=>a+b,0)*100).toFixed(2)}%. Increase cap or Top N.`;
       warnBox.appendChild(p);
     }
     if(filtered.length < 10 && capPct <= 10){
@@ -756,11 +1174,15 @@ if(filtered.length > topN){
     function renderSorted(){
       wrap.innerHTML = '';
       const sorted = sortTargets(targets, sortState);
-      wrap.appendChild(renderTable(sorted, capPct, sortState, 'capped', clippedPctMap));
+      wrap.appendChild(renderTable(sorted, capPct, sortState, 'capped', clippedPctMap, customTargets));
       renderPie(sorted);
     }
     window.__setSort = (s)=>{ sortState = s; renderSorted(); };
     renderSorted();
+    
+    // Store current targets for comparison
+    currentTargets = targets;
+    updateHoldingsDisplay();
 
     // downloads
     const dlCsvBtn = document.getElementById("dlCsvBtn");
@@ -778,6 +1200,65 @@ if(filtered.length > topN){
     runBtn.textContent = prevLabel;
   }
 });
+
+// Holdings file upload and comparison event handlers
+document.getElementById('holdingsFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  try {
+    const text = await file.text();
+    currentHoldings = parseCSV(text);
+    updateHoldingsDisplay();
+    
+    // Show success message
+    const filename = file.name;
+    const count = currentHoldings.size;
+    console.log(`Successfully loaded ${count} holdings from ${filename}`);
+    
+  } catch (err) {
+    alert(`Error parsing CSV: ${err.message}`);
+    currentHoldings.clear();
+    updateHoldingsDisplay();
+  }
+});
+
+document.getElementById('compareBtn').addEventListener('click', () => {
+  if (!currentHoldings.size || !currentTargets.length) {
+    alert('Please upload holdings CSV and generate portfolio targets first.');
+    return;
+  }
+  
+  try {
+    const deltaData = calculateDeltas();
+    const deltaSection = document.getElementById('deltaSection');
+    const deltaTableWrap = document.getElementById('deltaTableWrap');
+    
+    deltaTableWrap.innerHTML = '';
+    deltaTableWrap.appendChild(renderDeltaTable(deltaData));
+    deltaSection.style.display = 'block';
+    
+    // Setup download for deltas
+    const dlDeltaBtn = document.getElementById('dlDeltaCsvBtn');
+    dlDeltaBtn.onclick = () => {
+      const csvData = toCSV(deltaData.deltas);
+      download('portfolio-adjustments.csv', 'text/csv', csvData);
+    };
+    
+  } catch (err) {
+    alert(`Error calculating adjustments: ${err.message}`);
+  }
+});
+
+document.getElementById('clearHoldingsBtn').addEventListener('click', () => {
+  currentHoldings.clear();
+  document.getElementById('holdingsFile').value = '';
+  document.getElementById('deltaSection').style.display = 'none';
+  updateHoldingsDisplay();
+});
+
+// Initialize
+updateHoldingsDisplay();
 </script>
 </body>
 </html>
